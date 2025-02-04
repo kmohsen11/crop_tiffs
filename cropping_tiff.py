@@ -6,14 +6,14 @@ from pathlib import Path
 
 def crop_3d_image(image, crop_size):
     """
-    Randomly crop a 3D image along x and y axes, while accounting for channels if present.
+    Randomly crop a 3D or 4D image while maintaining channels.
     
     Args:
-        image (numpy.ndarray): Input 3D or 4D image (Z, Y, X) or (C, Z, Y, X).
-        crop_size (tuple): Tuple specifying the crop dimensions (height, width).
+        image (numpy.ndarray): Input image, shape can be (C, Z, Y, X) or (Z, Y, X).
+        crop_size (tuple): (crop_height, crop_width)
 
     Returns:
-        numpy.ndarray: Cropped 3D image.
+        numpy.ndarray: Cropped image with the same structure as input.
     """
     if image.ndim == 4:  # If channels are present
         channels, z_dim, y_dim, x_dim = image.shape
@@ -21,7 +21,7 @@ def crop_3d_image(image, crop_size):
         z_dim, y_dim, x_dim = image.shape
         channels = None
     else:
-        raise ValueError("Unsupported image dimensions. Only 3D or 4D arrays are supported.")
+        raise ValueError("Unsupported image dimensions. Expected 3D or 4D.")
 
     crop_height, crop_width = crop_size
 
@@ -40,12 +40,12 @@ def crop_3d_image(image, crop_size):
 
 def process_folder(input_folder, output_folder, crop_size):
     """
-    Process all 3D/4D TIFF images in the input folder, crop them, and save them to the output folder.
+    Process all 3D/4D TIFF images in the input folder, crop them, and save them correctly.
 
     Args:
-        input_folder (str): Path to the input folder containing 3D or 4D TIFF images.
-        output_folder (str): Path to the output folder to save cropped images.
-        crop_size (tuple): Tuple specifying the crop dimensions (height, width).
+        input_folder (str): Path to input folder containing TIFF images.
+        output_folder (str): Path to output folder to save cropped images.
+        crop_size (tuple): (height, width).
     """
     input_path = Path(input_folder)
     output_path = Path(output_folder)
@@ -59,29 +59,31 @@ def process_folder(input_folder, output_folder, crop_size):
             output_file_name = f"{Path(file_name).stem}_cropped{Path(file_name).suffix}"
             output_file = output_path / output_file_name
             
-            # Load the 3D or 4D TIFF image
+            # Load the TIFF image
             image = tiff.imread(input_file)
             
-            # Handle cases where image may be grayscale and missing expected dimensions
+            # Skip unsupported image dimensions
             if image.ndim not in [3, 4]:
-                print(f"Skipping {file_name}: Unsupported image dimensions {image.shape}")
+                print(f"Skipping {file_name}: Unsupported dimensions {image.shape}")
                 continue
 
             # Crop the image
             cropped_image = crop_3d_image(image, crop_size)
 
-            # Save the cropped image
-            tiff.imwrite(output_file, cropped_image)
+            # Save while ensuring proper channel recombination
+            tiff.imwrite(
+                output_file, 
+                cropped_image, 
+                photometric='minisblack' if cropped_image.ndim == 3 else 'rgb',
+                metadata={'axes': 'CZYX' if cropped_image.ndim == 4 else 'ZYX'} 
+            )
 
             print(f"Processed and saved: {output_file}")
 
 if __name__ == "__main__":
-    # Hardcoded directories and crop size
-    input_folder = "path/to/input_folder"
-    output_folder = "path/to/output_folder"
-    crop_height = 300  # you can change this value
-    crop_width = 300  # you can change this value
+    # Define paths
+    input_folder ="path/to/your/input/folder"
+    output_folder = "path/to/your/output/folder"
+    crop_height, crop_width = 300, 300  # Adjust as needed
 
-    crop_size = (crop_height, crop_width)
-
-    process_folder(input_folder, output_folder, crop_size)
+    process_folder(input_folder, output_folder, (crop_height, crop_width))
